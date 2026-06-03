@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 import TimeTable
+# import Classes
 
 # to run
 # fastapi dev api.py
@@ -7,6 +8,7 @@ import TimeTable
 app = FastAPI()
 
 tt = TimeTable.TimeTable("4tp")
+# classList = Classes.Classes()
 
 @app.get("/")
 async def root():
@@ -27,3 +29,4 @@ async def subs(className):
 @app.get("/classes")
 async def classes():
     return {}
+    # return classList.getClasses()
