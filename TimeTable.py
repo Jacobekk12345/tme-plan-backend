@@ -1,10 +1,26 @@
-# for now uses strona.html instead of scraping the website every time
+from playwright.async_api import async_playwright
+import asyncio
+import time
+import re
 
-class IdiotException(Exception):
-    pass
+async def scrape(classId):
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.goto(f"https://tme.edupage.org/timetable/view.php?num=235&class={classId}")
+        svg = await page.wait_for_selector("svg")
+        html = await svg.inner_html()
+        await browser.close()
+
+    return html
+
 
 from bs4 import BeautifulSoup
 import json
+import requests
+
+with open("data/classes.json") as f:
+    CLASSES = json.load(f)
 
 TIMES = [
     ("7:20",  "8:05"),
@@ -42,47 +58,38 @@ def get_slot_count(height):
     return round(float(height) / 127.5)
 
 class TimeTable:
-    def __init__(self, className):
-        self.__class = className
-        self.__timetable = {}
+    def __init__(self):
         self.__groups = []
-        self.__makeTimeTable()
 
-    def __makeTimeTable(self):
-        # replace with actual timetable of self.__class
-        try:
-            with open("strona.html", encoding="utf-8") as f:
-                html = f.read()
-        except FileNotFoundError:
-            raise IdiotException("Przeczytaj pierwsza linie w TimeTable.py brotato")
-
-        self.__lessons = self.__parse_svg(html)
-
-        self.__result = {
-            "times": TIMES,
-            "groups": self.getGroups(),
-            "lessons": self.__sort_lessons_by_day(self.__lessons),
-        }
-
-    def getGroups(self):
-        return self.__groups
-
-    def getTimeTable(self):
-        return self.__result
-    
-    def addGroup(self, group):
-        if (group not in self.__groups):
-            self.__groups.append(group)
-
-    def getDay(self, day):
-        if day not in DAYS:
-            raise ValueError(f"Invalid day: '{day}'. Valid days: {DAYS}")
-        
+    async def __fetchClass(self, classId):
+        lessons = self.__parse_svg(await scrape(classId))
         return {
             "times": TIMES,
             "groups": self.getGroups(),
-            "lessons": self.__result["lessons"][day]
+            "lessons": self.__sort_lessons_by_day(lessons),
+            "date": time.time()
         }
+
+    async def getTimeTable(self, classId):
+        return await self.__fetchClass(classId)
+
+    async def getDay(self, classId, day):
+        if day not in DAYS:
+            raise ValueError(f"Invalid day: '{day}'. Valid days: {DAYS}")
+        result = await self.__fetchClass(classId)
+        return {
+            "times": TIMES,
+            "groups": self.getGroups(),
+            "lessons": result["lessons"][day],
+            "date": time.time()
+        }
+
+    def addGroup(self, group):
+        if group not in self.__groups:
+            self.__groups.append(group)
+
+    def getGroups(self):
+        return self.__groups
 
     def __parse_lesson(self, title_tag, short_name_tag):
         rect = title_tag.parent
@@ -105,7 +112,7 @@ class TimeTable:
             lesson["teacher"] = lines[2]
             lesson["classroom"] = lines[3]
 
-            if (not lines[1][0].isdigit()):
+            if not lines[1][0].isdigit():
                 self.addGroup(lines[1])
 
         elif len(lines) == 3:
@@ -146,13 +153,19 @@ class TimeTable:
         return sorted_by_group
 
     def __parse_svg(self, html):
-        soup = BeautifulSoup(html, "html.parser")
+        soup = BeautifulSoup(f"<svg>{html}</svg>", "html.parser")
         return [
             self.__parse_lesson(title, title.parent.find_previous_sibling("text", attrs={"dominant-baseline": "central"}))
             for title in soup.find_all("title")
         ]
 
+def updateTimetables():
+    tt = TimeTable()
+    for classId, name in CLASSES.get("classes").items():
+        safe_name = re.sub(r'[<>:"/\\|?*]', '-', name).split(" (")[0].lower()
+        with open(f"data/classes/{safe_name}.json", "w", encoding='utf-8') as f:
+            json.dump(tt.getTimeTable(classId), f, indent=4)
+            f.close()
+
 if __name__ == '__main__':
-    tt = TimeTable("4tp")
-    with open("testttttt.json", "w") as f:
-        json.dump(tt.getTimeTable(), f, indent=4)
+    updateTimetables()
