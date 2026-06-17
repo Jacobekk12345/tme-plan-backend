@@ -1,4 +1,4 @@
-# tme-plan-backed
+# tme-plan-backend
 
 ## Installation
 
