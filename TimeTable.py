@@ -176,7 +176,8 @@ class TimeTable:
 
         if lesson["classroom"]:
             lesson["classroom"] = lesson["classroom"].split(" - ")[0]
-
+        elif lesson["group"]:
+            lesson["group"] = lesson["group"].split(" - ")[0]
         return lesson
 
     def __sort_lessons_by_day(self, lessons):
