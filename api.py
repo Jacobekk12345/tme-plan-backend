@@ -12,7 +12,6 @@ CACHE_TTL = 86400  # 24 hours
 app = FastAPI()
 _refresh_task = None
 
-
 def _load_cached_classes() -> dict | None:
     try:
         with open(CLASSES_FILE) as f:
@@ -26,7 +25,6 @@ def _load_cached_teachers() -> dict | None:
             return json.load(f)
     except FileNotFoundError:
         return None
-
 
 async def _refresh():
     await Classes.scrape_and_save()
@@ -87,7 +85,6 @@ async def get_teacher(teacherId: str = None, teacherName: str = None):
         return {"teacherId": match}
     raise HTTPException(400, "Provide teacherId or teacherName")
 
-
 @app.get("/classes")
 async def get_classes():
     data = await load_or_refresh_classes()
@@ -107,6 +104,12 @@ async def get_class(classId: str = None, className: str = None):
             raise HTTPException(404, "Class not found")
         return {"classId": match}
     raise HTTPException(400, "Provide classId or className")
+
+@app.get("/subs/{className}/{date}") # for now use 25.06
+async def get_subs(className: str, date:str):
+    with open("data/subs/25.06.json") as f:
+        data = json.load(f)
+        return data[className]
 
 @app.get("/timetable")
 async def get_timetable(className: str = None, teacherName: str = None):
