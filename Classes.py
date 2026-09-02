@@ -3,9 +3,14 @@ import json
 import time
 from urllib.parse import urlparse, parse_qs
 from playwright.async_api import async_playwright
+import os, dotenv
 
 DATA_FILE = "data/classes.json"
 URL = "https://tme.edupage.org/timetable/"
+
+dotenv.load_dotenv()
+
+DEBUG = os.getenv("DEBUG") == "TRUE"
 
 def _run_scrape():
     try:
@@ -20,11 +25,11 @@ def _run_scrape():
 
 async def _scrape():
     async with async_playwright() as p:
-        browser = await p.chromium.launch()
+        browser = await p.chromium.launch(headless = not DEBUG)
         page = await browser.new_page()
         await page.goto(URL)
 
-        dropdown = await page.wait_for_selector("div.skgd > div > div > div > span")
+        dropdown = await page.wait_for_selector("div.skgd > div > div > div > div > div > span")
         await dropdown.click()
         await page.wait_for_selector(".dropDownPanel.asc-context-menu li a")
 
@@ -83,4 +88,4 @@ async def scrape_and_save():
     return data
 
 if __name__ == "__main__":
-    asyncio.run(_scrape())
+    asyncio.run(scrape_and_save())

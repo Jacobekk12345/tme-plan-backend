@@ -24,9 +24,7 @@ async def _scrape():
         page = await browser.new_page()
         await page.goto(URL)
 
-        spans = page.locator("div.skgd > div > div > div > span")
-        await spans.first.wait_for()
-        dropdown = await spans.nth(1).element_handle()
+        dropdown = page.locator('div.skgd > div > div > div > span[title="Nauczyciele"]')
 
         await dropdown.click()
         await page.wait_for_selector(".dropDownPanel.asc-context-menu li a")

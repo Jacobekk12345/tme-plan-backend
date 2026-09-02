@@ -4,36 +4,24 @@ import time
 import re
 import unicodedata
 import os
+import dotenv
+import shutil
 
-os.makedirs("data/teachers", exist_ok=True)
-os.makedirs("data/classes", exist_ok=True)
+dotenv.load_dotenv()
 
-async def scrape(classId):
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        page = await browser.new_page()
-        await page.goto(f"https://tme.edupage.org/timetable/view.php?num={NUM}&class={classId}")
-        svg = await page.wait_for_selector("svg")
-        html = await svg.inner_html()
-        await browser.close()
+DEBUG = os.getenv("DEBUG") == "TRUE"
 
-    return html
 
-async def scrapeTeacher(teacherId):
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        page = await browser.new_page()
-        await page.goto(f"https://tme.edupage.org/timetable/view.php?num={NUM}&teacher={teacherId}")
-        svg = await page.wait_for_selector("svg")
-        html = await svg.inner_html()
-        await browser.close()
+def reset_dir(path):
+    if os.path.exists(path):
+        shutil.rmtree(path)
+    os.makedirs(path, exist_ok=True)
 
-    return html
-
+reset_dir("data/teachers")
+reset_dir("data/classes")
 
 from bs4 import BeautifulSoup
 import json
-import requests
 
 with open("data/classes.json") as f:
     CLASSES = json.load(f)
@@ -86,9 +74,37 @@ def get_slot_count(height):
 class TimeTable:
     def __init__(self):
         self.__groups = []
+        self._playwright = None
+        self._browser = None
+        self._page = None
+
+    async def start(self):
+        self._playwright = await async_playwright().start()
+        self._browser = await self._playwright.chromium.launch(headless=not DEBUG)
+        self._page = await self._browser.new_page()
+
+    async def close(self):
+        if self._browser:
+            await self._browser.close()
+        if self._playwright:
+            await self._playwright.stop()
+
+    async def __aenter__(self):
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+
+    async def __navigate_and_get_svg(self, url):
+        await self._page.goto(url)
+        svg = await self._page.wait_for_selector("svg")
+        return await svg.inner_html()
 
     async def __fetchClass(self, classId):
-        lessons = self.__parse_svg(await scrape(classId))
+        url = f"https://tme.edupage.org/timetable/view.php?num={NUM}&class={classId}"
+        html = await self.__navigate_and_get_svg(url)
+        lessons = self.__parse_svg(html)
         return {
             "times": TIMES,
             "groups": self.getGroups(),
@@ -97,7 +113,9 @@ class TimeTable:
         }
 
     async def __fetchTeacher(self, teacherId):
-        lessons = self.__parse_svg(await scrapeTeacher(teacherId), True)
+        url = f"https://tme.edupage.org/timetable/view.php?num={NUM}&teacher={teacherId}"
+        html = await self.__navigate_and_get_svg(url)
+        lessons = self.__parse_svg(html, True)
         return {
             "times": TIMES,
             "groups": self.getGroups(),
@@ -177,6 +195,9 @@ class TimeTable:
         if lesson["classroom"]:
             lesson["classroom"] = lesson["classroom"].split(" - ")[0]
 
+        elif lesson["group"]:   # yes its the classroom too lazy to fix
+            lesson["group"] = lesson["group"].split(" - ")[0]
+
         return lesson
 
     def __sort_lessons_by_day(self, lessons):
@@ -214,8 +235,7 @@ class TimeTable:
             for title in soup.find_all("title")
         ]
 
-async def updateTimetables():
-    tt = TimeTable()
+async def updateTimetables(tt):
     length = len(CLASSES.get("classes").items())
     for i, (classId, name) in enumerate(CLASSES.get("classes").items()):
         print(f"\rLoading classes: {i + 1}/{length}", end="", flush=True)
@@ -223,9 +243,9 @@ async def updateTimetables():
         data = await tt.getTimeTable(classId)
         with open(f"data/classes/{safe_name}.json", "w", encoding='utf-8') as f:
             json.dump(data, f, indent=4)
+    print()
 
-async def updateTeacherTimetables():
-    tt = TimeTable()
+async def updateTeacherTimetables(tt):
     length = len(TEACHERS.get("teachers").items())
     for i, (teacherId, name) in enumerate(TEACHERS.get("teachers").items()):
         print(f"\rLoading teachers: {i + 1}/{length}", end="", flush=True)
@@ -233,10 +253,12 @@ async def updateTeacherTimetables():
         data = await tt.getTeacherTimeTable(teacherId)
         with open(f"data/teachers/{safe_name}.json", "w", encoding='utf-8') as f:
             json.dump(data, f, indent=4)
+    print()
 
 async def updateAll():
-    await updateTimetables()
-    await updateTeacherTimetables()
+    async with TimeTable() as tt:
+        await updateTimetables(tt)
+        await updateTeacherTimetables(tt)
 
 if __name__ == '__main__':
     asyncio.run(updateAll())
