@@ -261,6 +261,13 @@ class SubstitutionScraper:
             "group": None,
         }
 
+        # Group info (e.g. "... , group: 2 ...") can appear whether or not
+        # the hour is a cancellation, so pull it from the full row text
+        # first -- don't let the cancelled-row early return skip it.
+        text_parts = sub_text.split(",")
+        if len(text_parts) > 1 and ":" in text_parts[1]:
+            entry["group"] = text_parts[1].split(":")[0].strip()
+
         if is_cancelled or "Zastępstwa" not in sub_text:
             return lesson_nrs, entry
 
@@ -272,10 +279,6 @@ class SubstitutionScraper:
                 entry["classroom"] = (
                     sub_third.split("➔")[-1].replace(", (*)", "").strip()
                 )
-
-        first_parts = sub_first.split(",")
-        if len(first_parts) > 1 and ":" in first_parts[1]:
-            entry["group"] = first_parts[1].split(":")[0].strip()
 
         if "➔" in sub_first:
             entry["subject"] = sub_first.split("➔")[-1].strip()
