@@ -184,10 +184,29 @@ class SubstitutionScraper:
                 # on the site). Give each hour in the range its own entry
                 # (with the same substitution details) instead of a single
                 # combined key.
+                #
+                # A class can also be split into groups, with separate rows
+                # for the same hour (one per group) -- e.g. group 1 is
+                # cancelled but group 2 isn't. Collect every row for a given
+                # hour instead of letting a later row silently overwrite an
+                # earlier one; _finalize_day() then collapses each hour down
+                # to a single entry, or leaves a list when there's more than
+                # one group.
                 for lesson_nr in lesson_nrs:
-                    data[class_name][lesson_nr] = dict(entry)
+                    data[class_name].setdefault(lesson_nr, []).append(dict(entry))
 
+        self._finalize_day(data)
         return data
+
+    @staticmethod
+    def _finalize_day(data: dict) -> None:
+        """Collapses each hour's list of collected entries: a single entry
+        stays a plain dict (unchanged shape from before), while an hour with
+        multiple group-specific rows becomes a list of entries instead of
+        one row silently overwriting the other."""
+        for lessons in data.values():
+            for lesson_nr, entries in lessons.items():
+                lessons[lesson_nr] = entries[0] if len(entries) == 1 else entries
 
     @staticmethod
     def _expand_lesson_range(raw_period: str) -> list[str]:
