@@ -14,13 +14,19 @@ Install Playwright browsers:
 playwright install
 ```
 
-
-
 ## Running
 
 ```bash
 fastapi run api.py
 ```
+
+## Usage
+
+normally the scraper runs in headless mode
+to see what it's doing:
+
+1. Create a .env file
+2. set DEBUG=1
 
 ## Deployment (Vercel)
 

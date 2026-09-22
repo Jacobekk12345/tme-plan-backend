@@ -13,8 +13,6 @@ import dotenv
 
 dotenv.load_dotenv()
 
-DEBUG = os.getenv("DEBUG") == "TRUE"
-
 CLASSES_FILE = "data/classes.json"
 TEACHERS_FILE = "data/teachers.json"
 CLASSES_DIR = "data/classes"
@@ -89,7 +87,7 @@ class TimeTable:
         if self._num is None:
             self._num = _read_json(CLASSES_FILE).get("num")
         self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.chromium.launch(headless=not DEBUG)
+        self._browser = await self._playwright.chromium.launch(not os.getenv("DEBUG") == "1")
         self._page = await self._browser.new_page()
 
     async def close(self):

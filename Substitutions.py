@@ -59,7 +59,7 @@ class SubstitutionScraper:
         self,
         base_url: str = BASE_URL,
         output_dir: str = OUTPUT_DIR,
-        headless: bool = os.getenv("FASTAPI_ENV", "production") == "development",
+        headless: bool = os.getenv("DEBUG") == "1",
         timeout_ms: int = 15_000,    
     ) -> None:
         self.base_url = base_url
@@ -179,12 +179,45 @@ class SubstitutionScraper:
                 parsed = self._parse_row(row)
                 if parsed is None:
                     continue
-                lesson_nr, entry = parsed
-                data[class_name][lesson_nr] = entry
+                lesson_nrs, entry = parsed
+                # A single row can cover a range of hours (e.g. "5. - 7."
+                # on the site). Give each hour in the range its own entry
+                # (with the same substitution details) instead of a single
+                # combined key.
+                for lesson_nr in lesson_nrs:
+                    data[class_name][lesson_nr] = dict(entry)
 
         return data
 
-    def _parse_row(self, row) -> tuple[str, dict] | None:
+    @staticmethod
+    def _expand_lesson_range(raw_period: str) -> list[str]:
+        """Turns a period string like '(5.)' or '(5. - 7.)' into a list of
+        individual lesson-number strings, e.g. ['5'] or ['5', '6', '7'].
+
+        Falls back to returning the cleaned string as a single-item list
+        if it doesn't look like a simple numeric (range) value.
+        """
+        cleaned = (
+            raw_period.replace("(", "")
+            .replace(")", "")
+            .replace(".", "")
+            .strip()
+        )
+        # Normalize possible dash variants (-, en dash, em dash) to "-".
+        normalized = cleaned.replace("–", "-").replace("—", "-")
+
+        if "-" in normalized:
+            start_str, end_str = (p.strip() for p in normalized.split("-", 1))
+            if start_str.isdigit() and end_str.isdigit():
+                start, end = int(start_str), int(end_str)
+                if start <= end:
+                    return [str(n) for n in range(start, end + 1)]
+            # Not a clean numeric range -- fall back to the raw cleaned text.
+            return [normalized]
+
+        return [cleaned]
+
+    def _parse_row(self, row) -> tuple[list[str], dict] | None:
         info = row.select_one(".info > span")
         period = row.select_one(".period > span")
 
@@ -199,7 +232,7 @@ class SubstitutionScraper:
         sub_text = info.get_text(" ", strip=True).replace(", (*)", "")
         is_cancelled = "Anulowano" in sub_text
 
-        lesson_nr = period.text.replace("(", "").replace(")", "").replace(".", "")
+        lesson_nrs = self._expand_lesson_range(period.text)
 
         entry = {
             "isCancelled": is_cancelled,
@@ -210,7 +243,7 @@ class SubstitutionScraper:
         }
 
         if is_cancelled or "Zastępstwa" not in sub_text:
-            return lesson_nr, entry
+            return lesson_nrs, entry
 
         sub_first, sub_second = sub_text.split(" - Zastępstwa", 1)
 
@@ -231,7 +264,7 @@ class SubstitutionScraper:
         if "➔" in sub_second:
             entry["teacher"] = sub_second.split("➔")[-1].strip()
 
-        return lesson_nr, entry
+        return lesson_nrs, entry
 
     # ------------------------------------------------------------------ #
     # output

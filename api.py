@@ -20,7 +20,6 @@ REFRESH_KEY = "refreshed"
 
 DAILY_REFRESH_HOUR = 20              # refresh daily at 20:00 (server local time)
 MAX_DATA_AGE = timedelta(days=1)     # older than this -> refresh immediately
-RETRY_DELAY_S = 30 * 60              # if a refresh fails, retry every 30 min
 
 logger = logging.getLogger("api")
 logging.basicConfig(level=logging.INFO)
@@ -133,15 +132,11 @@ async def _run_steps(pending: list[str]) -> list[str]:
 
 
 async def _refresh_until_success() -> None:
-    """Runs every step; retries only the ones that failed, every RETRY_DELAY_S."""
     pending = list(STEPS)
     while True:
         pending = await _run_steps(pending)
         if not pending:
             break
-        logger.info("Still failing: %s. Retrying those in %d min",
-                    ", ".join(pending), RETRY_DELAY_S // 60)
-        await asyncio.sleep(RETRY_DELAY_S)
     _write_last_refresh()  # only when EVERY step has succeeded
     logger.info("Refresh finished OK")
 
